@@ -7,18 +7,22 @@ import math
 CENTER_X = 150
 CENTER_Y = 100
 
-
 def create_tracks(board, group, net, layer, thickness, coords):
     last_x = None
     last_y = None
     for coord in coords:
-        x = coord["x"] + CENTER_X
-        y = coord["y"] + CENTER_Y
+        # Convert from mm to KiCad's internal units (assuming nanometers here)
+        x = int((coord["x"] + CENTER_X) * 1e6)  # 1 mm = 1e6 nm
+        y = int((coord["y"] + CENTER_Y) * 1e6)
+
         track = pcbnew.PCB_TRACK(board)
         if last_x is not None:
-            track.SetStart(pcbnew.wxPointMM(float(last_x), float(last_y)))
-            track.SetEnd(pcbnew.wxPointMM(float(x), float(y)))
-            track.SetWidth(int(thickness * 1e6))
+            # Use VECTOR2I to set the start and end points
+            start_point = pcbnew.VECTOR2I(last_x, last_y)
+            end_point = pcbnew.VECTOR2I(x, y)
+            track.SetStart(start_point)
+            track.SetEnd(end_point)
+            track.SetWidth(int(thickness * 1e6))  # Convert thickness to internal units if it's in mm
             track.SetLayer(layer)
             if net is not None:
                 track.SetNetCode(net.GetNetCode())
@@ -26,6 +30,28 @@ def create_tracks(board, group, net, layer, thickness, coords):
             group.AddItem(track)
         last_x = x
         last_y = y
+
+
+
+
+# def create_tracks(board, group, net, layer, thickness, coords):
+#     last_x = None
+#     last_y = None
+#     for coord in coords:
+#         x = coord["x"] + CENTER_X
+#         y = coord["y"] + CENTER_Y
+#         track = pcbnew.PCB_TRACK(board)
+#         if last_x is not None:
+#             track.SetStart(pcbnew.wxPointMM(float(last_x), float(last_y)))
+#             track.SetEnd(pcbnew.wxPointMM(float(x), float(y)))
+#             track.SetWidth(int(thickness * 1e6))
+#             track.SetLayer(layer)
+#             if net is not None:
+#                 track.SetNetCode(net.GetNetCode())
+#             board.Add(track)
+#             group.AddItem(track)
+#         last_x = x
+#         last_y = y
 
 
 class CoilPlugin(pcbnew.ActionPlugin):
