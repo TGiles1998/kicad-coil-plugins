@@ -114,9 +114,13 @@ class CoilPlugin(pcbnew.ActionPlugin):
                 for via in coil_data["vias"]:
                     net = self.findNet(board, via)
                     pcb_via = pcbnew.PCB_VIA(board)
-                    pcb_via.SetPosition(
-                        pcbnew.wxPointMM(via["x"] + CENTER_X, via["y"] + CENTER_Y)
-                    )
+                    # pcb_via.SetPosition(
+                    #     pcbnew.wxPointMM(via["x"] + CENTER_X, via["y"] + CENTER_Y)
+                    # )
+                    # Corrected version:
+                    x = int((via["x"] + CENTER_X) * 1e6)  # Convert from mm to KiCad's internal units (nanometers)
+                    y = int((via["y"] + CENTER_Y) * 1e6)  # Convert from mm to KiCad's internal units (nanometers)
+                    pcb_via.SetPosition(pcbnew.VECTOR2I(x, y))
                     pcb_via.SetWidth(int(via_diameter * 1e6))
                     pcb_via.SetDrill(int(via_drill_diameter * 1e6))
                     pcb_via.SetNetCode(net.GetNetCode())
@@ -167,20 +171,79 @@ class CoilPlugin(pcbnew.ActionPlugin):
                     y = text["y"] + CENTER_Y
                     pcb_txt = pcbnew.PCB_TEXT(board)
                     pcb_txt.SetText(text["text"])
-                    pcb_txt.SetPosition(pcbnew.wxPointMM(x, y))
-                    pcb_txt.SetHorizJustify(pcbnew.GR_TEXT_HJUSTIFY_CENTER)
-                    pcb_txt.Rotate(pcbnew.wxPointMM(x, y), text["angle"])
-                    pcb_txt.SetTextSize(
-                        pcbnew.wxSize(
-                            text["size"] * pcbnew.IU_PER_MM,
-                            text["size"] * pcbnew.IU_PER_MM,
-                        )
-                    )
+
+                    # Convert from mm to KiCad's internal units (nanometers) and then to VECTOR2I
+                    x = int((text["x"] + CENTER_X) * 1e6)  # Conversion to nanometers
+                    y = int((text["y"] + CENTER_Y) * 1e6)  # Conversion to nanometers
+                    pcb_txt.SetPosition(pcbnew.VECTOR2I(x, y))
+                    # Inside your loop or where you're handling PCB_TEXT creation and properties
+                    # pcb_txt.SetTextJustify(pcbnew.TEXT_JUSTIFY_CENTER) pcb_txt.Rotate(pcbnew.wxPointMM(x, y),
+                    # text["angle"]) Assuming `x` and `y` are the center of rotation in millimeters,
+                    # and `text["angle"]` is the rotation angle in degrees First, convert `x` and `y` from mm to
+                    # KiCad's internal units (nanometers)
+                    # Assuming x and y are the center of rotation in millimeters
+                    # Initialize rotation_center with a default or None
+                    rotation_center = None  # or pcbnew.VECTOR2I(0, 0) as a sensible default
+
+                    try:
+                        # Assuming x and y are the center of rotation in millimeters
+                        x_internal = int(x * 1e6)  # Convert from mm to KiCad's internal units (nanometers)
+                        y_internal = int(y * 1e6)
+                        rotation_center = pcbnew.VECTOR2I(x_internal, y_internal)
+                    except OverflowError as e:
+                        print(f"Error creating VECTOR2I with x={x_internal}, y={y_internal}: {e}")
+                        # Here, decide how to handle the error. Options might include:
+                        # - Setting rotation_center to a default value
+                        # - Raising an exception or otherwise halting execution
+                        # - Skipping the Rotate call
+
+                    # Only proceed if rotation_center was successfully created
+                    if rotation_center is not None:
+                        pcb_txt.Rotate(rotation_center, angle_tenths_of_degrees)
+                    else:
+                        # Handle the case where rotation_center wasn't set up correctly
+                        print("Rotation center could not be established. Skipping rotation.")
+
+                    # Assuming text["size"] is in millimeters and needs to be converted to KiCad's internal units (
+                    # nanometers) Assuming text["size"] is in millimeters and needs to be converted to KiCad's
+                    # internal units (nanometers)
+                    text_size_in_nm = int(text["size"] * 1e6)  # Convert from mm to nanometers
+
+                    # Create a VECTOR2I object for the text size
+                    text_size_vector = pcbnew.VECTOR2I(text_size_in_nm, text_size_in_nm)
+
+                    # Set the text size using the VECTOR2I object
+                    pcb_txt.SetTextSize(text_size_vector)
+
+                    # Set the layer for the text
                     pcb_txt.SetLayer(pcbnew.F_SilkS)
+
+                    # If the text is meant to be on the bottom layer, flip it
                     if text["layer"] == "b":
-                        pcb_txt.Flip(pcbnew.wxPointMM(x, y), True)
+                        # Assuming x and y are the center coordinates in millimeters for the text position
+                        # First, convert these to KiCad's internal units (nanometers)
+                        x_nm = int(x * 1e6)
+                        y_nm = int(y * 1e6)
+                        # Create a VECTOR2I object for the position
+                        position = pcbnew.VECTOR2I(x_nm, y_nm)
+                        # Use the position to flip the text
+                        pcb_txt.Flip(position, True)
+
+                    # Add the text to the board and the group
                     board.Add(pcb_txt)
                     pcb_group.AddItem(pcb_txt)
+
+                    # pcb_txt.SetTextSize(
+                    #     pcbnew.wxSize(
+                    #         text["size"] * pcbnew.IU_PER_MM,
+                    #         text["size"] * pcbnew.IU_PER_MM,
+                    #     )
+                    # )
+                    # pcb_txt.SetLayer(pcbnew.F_SilkS)
+                    # if text["layer"] == "b":
+                    #     pcb_txt.Flip(pcbnew.wxPointMM(x, y), True)
+                    # board.Add(pcb_txt)
+                    # pcb_group.AddItem(pcb_txt)
 
                 # create the mounting holes
                 # for hole in coil_data["mountingHoles"]:
@@ -202,48 +265,129 @@ class CoilPlugin(pcbnew.ActionPlugin):
                     # pcb_group.AddItem(pcb_hole)
 
                 # crate the edge cuts
+                # Create the edge cuts
+                # Create the edge cuts
                 for edge_cut in coil_data["edgeCuts"]:
                     ec = pcbnew.PCB_SHAPE(board)
                     ec.SetShape(pcbnew.SHAPE_T_POLY)
                     ec.SetFilled(False)
                     ec.SetLayer(pcbnew.Edge_Cuts)
-                    ec.SetWidth(int(0.1 * pcbnew.IU_PER_MM))
-                    v = pcbnew.wxPoint_Vector()
+                    width_in_nm = int(0.1 * 1e6)  # Convert 0.1 mm to nanometers
+                    ec.SetWidth(width_in_nm)
+
+                    # Initialize a list to store the VECTOR2I points
+                    v = []
+
+                    # Loop through each point in the edge cut
                     for point in edge_cut:
-                        x = point["x"] + CENTER_X
-                        y = point["y"] + CENTER_Y
-                        v.append(pcbnew.wxPointMM(x, y))
+                        # Convert from mm to KiCad's internal units (nanometers) and adjust for center
+                        x_nm = int((point["x"] + CENTER_X) * 1e6)  # Convert x to nanometers
+                        y_nm = int((point["y"] + CENTER_Y) * 1e6)  # Convert y to nanometers
+
+                        # Append the VECTOR2I converted point to the list
+                        v.append(pcbnew.VECTOR2I(x_nm, y_nm))
+
+                    # Set the polygon points for the edge cut
                     ec.SetPolyPoints(v)
+
+                    # Add the edge cut to the board
                     board.Add(ec)
 
-                # put it on the solder mask as well - who knows why...
+                # for edge_cut in coil_data["edgeCuts"]:
+                #     ec = pcbnew.PCB_SHAPE(board)
+                #     ec.SetShape(pcbnew.SHAPE_T_POLY)
+                #     ec.SetFilled(False)
+                #     ec.SetLayer(pcbnew.Edge_Cuts)
+                #     ec.SetWidth(int(0.1 * pcbnew.IU_PER_MM))
+                #     v = pcbnew.wxPoint_Vector()
+                #     for point in edge_cut:
+                #         x = point["x"] + CENTER_X
+                #         y = point["y"] + CENTER_Y
+                #         v.append(pcbnew.wxPointMM(x, y))
+                #     ec.SetPolyPoints(v)
+                #     board.Add(ec)
+
                 for edge_cut in coil_data["edgeCuts"]:
                     ec = pcbnew.PCB_SHAPE(board)
                     ec.SetShape(pcbnew.SHAPE_T_POLY)
                     ec.SetFilled(False)
                     ec.SetLayer(pcbnew.F_Mask)
-                    ec.SetWidth(int(0.1 * pcbnew.IU_PER_MM))
-                    v = pcbnew.wxPoint_Vector()
+                    width_in_nm = int(0.1 * 1e6)  # Convert 0.1 mm to nanometers
+                    ec.SetWidth(width_in_nm)
+
+                    # Initialize a list to store the VECTOR2I points
+                    v = []
+
+                    # Loop through each point in the edge cut
                     for point in edge_cut:
-                        x = point["x"] + CENTER_X
-                        y = point["y"] + CENTER_Y
-                        v.append(pcbnew.wxPointMM(x, y))
+                        # Convert from mm to KiCad's internal units (nanometers) and adjust for center
+                        x_nm = int((point["x"] + CENTER_X) * 1e6)  # Convert x to nanometers
+                        y_nm = int((point["y"] + CENTER_Y) * 1e6)  # Convert y to nanometers
+
+                        # Append the VECTOR2I converted point to the list
+                        v.append(pcbnew.VECTOR2I(x_nm, y_nm))
+
+                    # Set the polygon points for the edge cut
                     ec.SetPolyPoints(v)
+
+                    # Add the edge cut to the board
                     board.Add(ec)
+
+
+                # # put it on the solder mask as well - who knows why...
+                # for edge_cut in coil_data["edgeCuts"]:
+                #     ec = pcbnew.PCB_SHAPE(board)
+                #     ec.SetShape(pcbnew.SHAPE_T_POLY)
+                #     ec.SetFilled(False)
+                #     ec.SetLayer(pcbnew.F_Mask)
+                #     ec.SetWidth(int(0.1 * pcbnew.IU_PER_MM))
+                #     v = pcbnew.wxPoint_Vector()
+                #     for point in edge_cut:
+                #         x = point["x"] + CENTER_X
+                #         y = point["y"] + CENTER_Y
+                #         v.append(pcbnew.wxPointMM(x, y))
+                #     ec.SetPolyPoints(v)
+                #     board.Add(ec)
 
                 for edge_cut in coil_data["edgeCuts"]:
                     ec = pcbnew.PCB_SHAPE(board)
                     ec.SetShape(pcbnew.SHAPE_T_POLY)
                     ec.SetFilled(False)
                     ec.SetLayer(pcbnew.B_Mask)
-                    ec.SetWidth(int(0.1 * pcbnew.IU_PER_MM))
-                    v = pcbnew.wxPoint_Vector()
+                    width_in_nm = int(0.1 * 1e6)  # Convert 0.1 mm to nanometers
+                    ec.SetWidth(width_in_nm)
+
+                    # Initialize a list to store the VECTOR2I points
+                    v = []
+
+                    # Loop through each point in the edge cut
                     for point in edge_cut:
-                        x = point["x"] + CENTER_X
-                        y = point["y"] + CENTER_Y
-                        v.append(pcbnew.wxPointMM(x, y))
+                        # Convert from mm to KiCad's internal units (nanometers) and adjust for center
+                        x_nm = int((point["x"] + CENTER_X) * 1e6)  # Convert x to nanometers
+                        y_nm = int((point["y"] + CENTER_Y) * 1e6)  # Convert y to nanometers
+
+                        # Append the VECTOR2I converted point to the list
+                        v.append(pcbnew.VECTOR2I(x_nm, y_nm))
+
+                    # Set the polygon points for the edge cut
                     ec.SetPolyPoints(v)
+
+                    # Add the edge cut to the board
                     board.Add(ec)
+
+                # for edge_cut in coil_data["edgeCuts"]:
+                #     ec = pcbnew.PCB_SHAPE(board)
+                #     ec.SetShape(pcbnew.SHAPE_T_POLY)
+                #     ec.SetFilled(False)
+                #     ec.SetLayer(pcbnew.B_Mask)
+                #     ec.SetWidth(int(0.1 * pcbnew.IU_PER_MM))
+                #     v = pcbnew.wxPoint_Vector()
+                #     for point in edge_cut:
+                #         x = point["x"] + CENTER_X
+                #         y = point["y"] + CENTER_Y
+                #         v.append(pcbnew.wxPointMM(x, y))
+                #     ec.SetPolyPoints(v)
+                #     board.Add(ec)
 
                 # Add components
                 # coil_data["components"] = [
